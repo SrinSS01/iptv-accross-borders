@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>IPTV Accross Borders</title>
+  <path d="M22 8H8v48h14M42 8h14v48H42" stroke="#f1f0eb" stroke-width="4"/>
+  <path d="M2 32h18l8-16 8 32 8-16h18" stroke="#ff4655" stroke-width="5" stroke-linejoin="miter"/>
+</svg>

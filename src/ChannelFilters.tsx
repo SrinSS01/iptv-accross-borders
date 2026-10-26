@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom"
 import { useEffect, useId, useRef, useState } from "react"
 
 type Option = {
@@ -34,10 +35,10 @@ function FilterPicker({
   const matches = options.filter((option) =>
     option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
   )
-  function close() {
+  function close(restoreFocus = true) {
     dialog.current?.close()
     setOpen(false)
-    trigger.current?.focus()
+    if (restoreFocus) trigger.current?.focus()
   }
   function choose(next: string) {
     onChange(next)
@@ -74,12 +75,29 @@ function FilterPicker({
       }
     }
     place()
-    dialog.current?.showModal()
+    dialog.current?.show()
     search.current?.focus()
+    function outside(event: PointerEvent) {
+      if (
+        !dialog.current?.contains(event.target as Node) &&
+        !trigger.current?.contains(event.target as Node)
+      )
+        close(false)
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        close()
+      }
+    }
+    document.addEventListener("pointerdown", outside)
+    document.addEventListener("keydown", escape)
     window.addEventListener("resize", place)
     window.addEventListener("scroll", place, true)
     window.visualViewport?.addEventListener("resize", place)
     return () => {
+      document.removeEventListener("pointerdown", outside)
+      document.removeEventListener("keydown", escape)
       window.removeEventListener("resize", place)
       window.removeEventListener("scroll", place, true)
       window.visualViewport?.removeEventListener("resize", place)
@@ -117,124 +135,128 @@ function FilterPicker({
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      <dialog
-        ref={dialog}
-        className="filter-picker"
-        style={position}
-        aria-labelledby={`${id}-title`}
-        onCancel={(event) => {
-          event.preventDefault()
-          close()
-        }}
-        onClick={(event) => {
-          if (event.target === dialog.current) {
-            const bounds = dialog.current.getBoundingClientRect()
-            if (
-              event.clientX < bounds.left ||
-              event.clientX > bounds.right ||
-              event.clientY < bounds.top ||
-              event.clientY > bounds.bottom
-            )
-              close()
-          }
-        }}
-      >
-        <div className="filter-picker-heading">
-          <h3 id={`${id}-title`}>Choose {label.toLowerCase()}</h3>
-          <button
-            aria-label={`Close ${label.toLowerCase()} filter`}
-            onClick={close}
-          >
-            ×
-          </button>
-        </div>
-        <div className="filter-search">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <circle cx="10" cy="10" r="6" />
-            <path d="m15 15 5 5" />
-          </svg>
-          <input
-            ref={search}
-            aria-label={`Search ${
-              label.toLowerCase() === "country" ? "countries" : "categories"
-            }`}
-            placeholder={
-              label === "Country"
-                ? "Search country name…"
-                : "Search categories…"
-            }
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
+      {createPortal(
+        <dialog
+          ref={dialog}
+          className="filter-picker"
+          style={position}
+          aria-modal="false"
+          aria-labelledby={`${id}-title`}
+          onCancel={(event) => {
+            event.preventDefault()
+            close()
+          }}
+          onClick={(event) => {
+            if (event.target === dialog.current) {
+              const bounds = dialog.current.getBoundingClientRect()
               if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                matches.length
-              ) {
-                event.preventDefault()
-                choose(matches[0].value)
-              }
-            }}
-          />
-          {query && (
+                event.clientX < bounds.left ||
+                event.clientX > bounds.right ||
+                event.clientY < bounds.top ||
+                event.clientY > bounds.bottom
+              )
+                close()
+            }
+          }}
+        >
+          <div className="filter-picker-heading">
+            <h3 id={`${id}-title`}>Choose {label.toLowerCase()}</h3>
             <button
-              aria-label={`Clear ${label.toLowerCase()} search`}
-              onClick={() => {
-                setQuery("")
-                search.current?.focus()
-              }}
+              aria-label={`Close ${label.toLowerCase()} filter`}
+              onClick={() => close()}
             >
               ×
             </button>
-          )}
-        </div>
-        <div className="filter-options">
-          {matches.length ? (
-            matches.map((option) => (
+          </div>
+          <div className="filter-search">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="10" cy="10" r="6" />
+              <path d="m15 15 5 5" />
+            </svg>
+            <input
+              ref={search}
+              aria-label={`Search ${
+                label.toLowerCase() === "country" ? "countries" : "categories"
+              }`}
+              placeholder={
+                label === "Country"
+                  ? "Search country name…"
+                  : "Search categories…"
+              }
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.nativeEvent.isComposing &&
+                  matches.length
+                ) {
+                  event.preventDefault()
+                  choose(matches[0].value)
+                }
+              }}
+            />
+            {query && (
               <button
-                key={option.value}
-                className="filter-option"
-                aria-pressed={value === option.value}
-                onClick={() => choose(option.value)}
-              >
-                <span className="filter-option-check" aria-hidden="true">
-                  {value === option.value ? "✓" : ""}
-                </span>
-                <span>{option.label}</span>
-                {option.count !== undefined && (
-                  <span className="filter-option-count">
-                    {option.count.toLocaleString()}
-                  </span>
-                )}
-              </button>
-            ))
-          ) : (
-            <p className="filter-no-results" role="status">
-              No matches for “{query}”.
-              <br />
-              <button
+                aria-label={`Clear ${label.toLowerCase()} search`}
                 onClick={() => {
                   setQuery("")
                   search.current?.focus()
                 }}
               >
-                Clear search
+                ×
               </button>
-            </p>
-          )}
-        </div>
-        <p className="filter-picker-footer">
-          Channel counts from the full catalog
-        </p>
-      </dialog>
+            )}
+          </div>
+          <div className="filter-options">
+            {matches.length ? (
+              matches.map((option) => (
+                <button
+                  key={option.value}
+                  className="filter-option"
+                  aria-pressed={value === option.value}
+                  onClick={() => choose(option.value)}
+                >
+                  <span className="filter-option-check" aria-hidden="true">
+                    {value === option.value ? "✓" : ""}
+                  </span>
+                  <span>{option.label}</span>
+                  {option.count !== undefined && (
+                    <span className="filter-option-count">
+                      {option.count.toLocaleString()}
+                    </span>
+                  )}
+                </button>
+              ))
+            ) : (
+              <p className="filter-no-results" role="status">
+                No matches for “{query}”.
+                <br />
+                <button
+                  onClick={() => {
+                    setQuery("")
+                    search.current?.focus()
+                  }}
+                >
+                  Clear search
+                </button>
+              </p>
+            )}
+          </div>
+          <p className="filter-picker-footer">
+            Channel counts from the full catalog
+          </p>
+        </dialog>,
+        document.body,
+      )}
     </div>
   )
 }

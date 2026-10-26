@@ -1,3 +1,4 @@
+import "./recording-updates.css"
 import { scheduleAction, validateSchedule } from "./recording-policy"
 import Hls from "hls.js"
 import {
@@ -22,12 +23,17 @@ type Job = {
   bytes: number
 }
 type Saved = {
+  channelId: string
   id: string
   name: string
   url: string
   size: number
   filename: string
   partial: boolean
+}
+type RecordingNavigation = {
+  id: string
+  sequence: number
 }
 const RecordingContext = createContext<{
   open: (channel: RecordChannel) => void
@@ -36,6 +42,9 @@ const RecordingContext = createContext<{
   stop: () => void
   message: string
   remove: (id: string) => void
+  viewSaved: (id: string) => void
+  navigateRequest: RecordingNavigation | null
+  highlightedId: string | null
 } | null>(null)
 export function useRecording() {
   return useContext(RecordingContext)!
@@ -50,6 +59,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<Job | null>(null)
   const [saved, setSaved] = useState<Saved[]>([])
   const [message, setMessage] = useState("")
+  const [navigateRequest, setNavigateRequest] =
+    useState<RecordingNavigation | null>(null)
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const stopRef = useRef<() => void>(() => {})
   const urls = useRef<string[]>([])
@@ -197,6 +209,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
             const filename = `${name}-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`
             setSaved((current) => [
               {
+                channelId: initial.channel.id,
                 id: url,
                 name: initial.channel.name,
                 url,
@@ -337,10 +350,20 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         saved,
         stop: () => stopRef.current(),
         message,
+        navigateRequest,
+        highlightedId,
+        viewSaved: (id) => {
+          setHighlightedId(id)
+          setNavigateRequest((current) => ({
+            id,
+            sequence: (current?.sequence ?? 0) + 1,
+          }))
+        },
         remove: (id) => {
           URL.revokeObjectURL(id)
           urls.current = urls.current.filter((url) => url !== id)
           setSaved((current) => current.filter((item) => item.id !== id))
+          setHighlightedId((current) => (current === id ? null : current))
         },
       }}
     >
@@ -445,7 +468,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                 </p>
                 <button className="primary-action" type="submit">
                   {start ? "Schedule recording" : "Start recording"}{" "}
-                  <span aria-hidden="true">↗</span>
+                  <RecordActionIcon state={start ? "schedule" : "start"} />
                 </button>
               </>
             )}
@@ -456,8 +479,58 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   )
 }
 
+export function RecordActionIcon({
+  state,
+}: {
+  state: "start" | "schedule" | "scheduled" | "connecting" | "recording" | "saving" | "saved"
+}) {
+  if (state === "saving")
+    return <span className="record-saving-icon" aria-hidden="true" />
+  return (
+    <svg
+      className="record-action-icon"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {state === "start" ? (
+        <>
+          <circle cx="10" cy="10" r="7" />
+          <circle cx="10" cy="10" r="3" fill="currentColor" stroke="none" />
+        </>
+      ) : state === "schedule" ? (
+        <>
+          <circle cx="10" cy="10" r="7" />
+          <path d="M10 5v5l3 2" />
+        </>
+      ) : state === "recording" ? (
+        <rect
+          x="4"
+          y="4"
+          width="12"
+          height="12"
+          fill="currentColor"
+          stroke="none"
+        />
+      ) : state === "saved" ? (
+        <>
+          <path d="M7 4H3v13h13v-4M10 3h7v7M17 3l-9 9" />
+        </>
+      ) : (
+        <>
+          <circle cx="10" cy="10" r="7" />
+          <path d="m7 7 6 6M13 7l-6 6" />
+        </>
+      )}
+    </svg>
+  )
+}
+
 export function RecordButton({ channel }: { channel: RecordChannel }) {
-  const { open, job, stop } = useRecording()
+  const { open, job, stop, saved, viewSaved } = useRecording()
+  const latest = saved.find((item) => item.channelId === channel.id)
   if (job?.channel.id === channel.id)
     return (
       <button
@@ -465,7 +538,7 @@ export function RecordButton({ channel }: { channel: RecordChannel }) {
         disabled={job.state === "saving"}
         onClick={stop}
       >
-        <span className="record-dot" />
+        <RecordActionIcon state={job.state} />
         {job.state === "scheduled"
           ? "Cancel schedule"
           : job.state === "connecting"
@@ -476,13 +549,24 @@ export function RecordButton({ channel }: { channel: RecordChannel }) {
       </button>
     )
   return (
-    <button className="record-button" onClick={() => open(channel)}>
-      <span className="record-dot" /> Record channel
-    </button>
+    <div className="record-channel-actions">
+      {latest && (
+        <button
+          className="record-button record-view-saved"
+          onClick={() => viewSaved(latest.id)}
+        >
+          <RecordActionIcon state="saved" /> View saved recording
+        </button>
+      )}
+      <button className="record-button" onClick={() => open(channel)}>
+        <RecordActionIcon state="start" />
+        {latest ? "Record again" : "Record channel"}
+      </button>
+    </div>
   )
 }
 export function RecordingLibrary() {
-  const { job, saved, stop, message } = useRecording()
+  const { job, saved, stop } = useRecording()
   return (
     <section className="record-library">
       <p className="eyebrow">YOUR BROADCAST ARCHIVE</p>
@@ -490,16 +574,11 @@ export function RecordingLibrary() {
         Recordings<span className="accent">.</span>
       </h1>
       <p className="muted">Watch now. Keep it for later.</p>
-      <p className="record-notice">
+      <p className="record-library-description">
         Choose Record channel from any preview or player. Start now or schedule
         a time. Keep this tab open and your device awake, then save your
         finished video before leaving.
       </p>
-      {message && (
-        <p role="status" className="record-notice">
-          {message}
-        </p>
-      )}
       {job && (
         <article className="record-item">
           <div>
@@ -520,6 +599,7 @@ export function RecordingLibrary() {
             disabled={job.state === "saving"}
             onClick={stop}
           >
+            <RecordActionIcon state={job.state} />
             {job.state === "scheduled"
               ? "Cancel schedule"
               : job.state === "connecting"
@@ -547,10 +627,27 @@ export function RecordingLibrary() {
 }
 
 function SavedRecording({ item }: { item: Saved }) {
-  const { remove } = useRecording()
+  const { remove, highlightedId, navigateRequest } = useRecording()
+  const row = useRef<HTMLElement>(null)
+  const highlighted = highlightedId === item.id
+  useEffect(() => {
+    if (!highlighted) return
+    const frame = requestAnimationFrame(() => {
+      row.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+      row.current?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [highlighted, navigateRequest?.sequence])
   const [confirming, setConfirming] = useState(false)
   return (
-    <article className="record-item">
+    <article
+      ref={row}
+      tabIndex={-1}
+      className={`record-item${highlighted ? " record-item-highlighted" : ""}`}
+      aria-label={`Recording of ${item.name}${
+        highlighted ? ", selected recording" : ""
+      }`}
+    >
       <div>
         <p className="eyebrow">
           {item.partial ? "PARTIAL RECORDING" : "READY TO SAVE"}

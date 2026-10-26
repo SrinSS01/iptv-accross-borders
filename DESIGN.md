@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: Streamly
+name: IPTV Accross Borders
 description: An angular broadcast browser and local recording desk.
 colors:
   background: "#101112"
@@ -27,7 +27,7 @@ components:
   dialog: {}
 ---
 
-# Streamly Design System
+# IPTV Accross Borders Design System
 
 ## Overview
 
@@ -35,7 +35,7 @@ components:
 A broadcast control desk: decisive typography, rectangular channel tiles, fine rules, and a red signal mark. The user's references are ArtCraft and Valorant, specifically minimal presentation and sharp edges.
 
 ### Product context and register
-Global public-TV viewers browse, watch, favorite, and record channels. English UI with broadcaster-provided names and device-local recording times. Product register with an expressive home headline. Preserve Streamly's name and recognizable red accent. No bubbly pills, floating card shadows, or decorative gradients.
+Global public-TV viewers browse, watch, favorite, and record channels. English UI with broadcaster-provided names and device-local recording times. Product register with an expressive home headline. Use the folder-derived IPTV Accross Borders name and angular border/signal logo. No bubbly pills, floating card shadows, or decorative gradients.
 
 Token ownership: `src/index.css` is the runtime token source. Frontmatter mirrors its `:root` values; Tailwind layout utilities in `src/App.tsx` consume equivalent values. Update this document and CSS together. Recording controls share `src/recording.tsx`.
 
@@ -66,7 +66,7 @@ Solid red for primary action, outlined neutrals for secondary actions. Record ch
 Home, Discover, Favorites, Recordings. Explicit Load more keeps the catalog bounded. Filters show all categories and alphabetically sorted countries; active selections can be removed individually or reset together. Missing logos use a neutral TV symbol and label; never derive initials or numeric pseudo-logos. Active recording status remains visible across navigation.
 
 ### Forms and overlays
-Category and Country use the shared ChannelFilters native-dialog picker with a search input and ordinary selection buttons. Desktop popups align to their trigger and flip when space is limited; phones use a wider modal. Native datetime-local controls use platform-owned pickers. Native dialog supplies modal focus, inert background, Escape handling and focus restoration. Field errors remain inline. Dates use the device timezone displayed in the form. Search is immediate and local, with an explicit clear action.
+Category and Country use the shared ChannelFilters non-modal dialog picker with a search input and ordinary selection buttons. Desktop popups align to their trigger and flip when space is limited; phones use a wider panel. Native datetime-local controls use platform-owned pickers. Native dialog supplies modal focus, inert background, Escape handling and focus restoration. Field errors remain inline. Dates use the device timezone displayed in the form. Search is immediate and local, with an explicit clear action.
 
 ### Iconography
 Existing 24px stroke SVG icons, typically displayed at 20px. Pair recording symbols with action text.
@@ -82,3 +82,8 @@ Plain action-led copy. Never imply that a listed channel is guaranteed reachable
 - Do expose recording state, captured size, and stop/save actions.
 - Don't return playlist files from recording actions.
 - Don't hide browser recording limitations or imply background server scheduling.
+
+## Catalog views and real data
+Home and Discover are anchors in one catalog surface. Grid, List and Timeline share filters. Programme imagery and UTC-normalized times come only from published XMLTV feeds; unavailable source fields remain explicitly unavailable. Broadcaster logos appear alongside channel titles. Successfully loaded artwork can raise visible channels in the order. Normal-layer filter portals use z-index 15 below the sticky header at 20.
+
+Channel logo tiles are transparent against the dark surface; prefer the API’s white logo variants when provided. Missing programme artwork falls back to an actual stream snapshot, labelled with its capture time. Loading snapshots use skeletons.

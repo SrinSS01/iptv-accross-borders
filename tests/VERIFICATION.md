@@ -27,3 +27,12 @@ Evidence IDs: desktop `ev_5cfa6a3623e1701a6ffc3bfa42617b252daca535cf76bf68d5ffc6
 ## Limits
 
 Recording is browser-local, one active job at a time, capped at 512 MB per recording. Keep the tab open/device awake and save output before reload. Finished recordings can be removed to release memory. Browser capture support and broadcaster CORS/availability affect success. Firefox/Safari and live HLS audio capture were not verified. The fixture is development-only and is not imported by the production entrypoint.
+
+## Expanded catalog and branding update
+
+- All 13 iptv-org metadata endpoints integrated with meaningful join/exclusion roles; live guide endpoint checked: 180,678 guide records, zero nonempty source URL lists on 2026-10-26.
+- Direct Playwright with Chromium: desktop catalog rendering, searchable India country selection, List and Timeline switching passed. Mobile 390px picker and Discover anchor navigation passed, document width 380px (no horizontal document overflow).
+- Real browser DOMParser fixture: all 9 XMLTV checks passed.
+- Node suite: all 11 tests passed (catalog joins/exclusions, timestamps, schedule policies).
+- TypeScript check and GitHub project-base Vite build passed. Build retains large main-bundle warning.
+- GitHub Actions deployment prepared, not published; see DEPLOYMENT.md. Production consumes real API data only. Synthetic programme fixtures are restricted to tests and are not bundled.

@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>XMLTV parser checks</title></head><body><h1>XMLTV parser checks</h1><output id="result">Running…</output><script type="module">
+import { parseXmltv } from '/src/programmes.ts'
+const now = Date.parse('2026-10-26T12:00:00Z')
+const base = 'https://example.invalid/guide.xml'
+const xml = `<!DOCTYPE tv SYSTEM "xmltv.dtd"><tv>
+<channel id="one"><display-name>News</display-name></channel>
+<channel id="two"><display-name>News</display-name></channel>
+<programme channel="one" start="202610261200 +0000" stop="202610261300 +0000"><title>Publisher title</title><desc>Publisher description</desc><icon src="/art.jpg"/></programme>
+<programme channel="one" start="202610261300 +0000" stop="202610261400 +0000"><title>Next programme</title><icon src="javascript:alert(1)"/></programme>
+<programme channel="one" start="202610261400 +0000"><title>Missing stop</title></programme>
+<programme channel="one" start="202610261500 +0000" stop="202610261600 +0000"></programme>
+<programme channel="one" start="202610261200 +0000" stop="202610261300 +0000"><title>Publisher title</title></programme>
+<programme channel="one" start="202001011200 +0000" stop="202001011300 +0000"><title>Expired</title></programme>
+</tv>`
+try {
+  const parsed = parseXmltv(xml, base, now)
+  const rows = parsed.programmes.get('one')
+  const checks = [rows.length === 2, rows[0].title === 'Publisher title', rows[0].description === 'Publisher description', rows[0].thumbnail === 'https://example.invalid/art.jpg', rows[1].thumbnail === undefined, rows[0].start === now, parsed.names.get('news').length === 2]
+  let rejected = false
+  try { parseXmltv('<!DOCTYPE tv [<!ENTITY x "bad">]><tv/>', base, now) } catch { rejected = true }
+  checks.push(rejected)
+  let malformed = false
+  try { parseXmltv('<tv><programme></tv>', base, now) } catch { malformed = true }
+  checks.push(malformed)
+  if (checks.some(check => !check)) throw new Error(`Failed checks: ${checks.map((check, index) => check ? '' : index).filter(String).join(', ')}`)
+  document.getElementById('result').textContent = `PASS: ${checks.length} XMLTV checks — real DOMParser, timestamps, descriptions, images, duplicates, missing data, expiry, ambiguous names and invalid XML.`
+  document.getElementById('result').dataset.status = 'passed'
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.message}`
+  document.getElementById('result').dataset.status = 'failed'
+}
+</script></body></html>
