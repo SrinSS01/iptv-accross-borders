@@ -1,0 +1,11 @@
+{
+  "description": "Browse global TV channels, watch live broadcasts, and record video in your browser.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  },
+  "title": "Streamly \u2014 Live TV & Recordings"
+}
