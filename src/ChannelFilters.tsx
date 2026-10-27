@@ -284,21 +284,6 @@ export default function ChannelFilters({
   return (
     <section className="channel-filters" aria-label="Filter channels">
       <div className="filter-bar">
-        <div className="filter-intro">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <path d="M3 7h18M3 17h18" />
-            <path d="M8 4v6M16 14v6" />
-          </svg>
-          <span>Refine channels</span>
-        </div>
         <FilterPicker
           label="Category"
           value={category}

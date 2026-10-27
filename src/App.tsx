@@ -1,4 +1,5 @@
 import Brand from "./Brand"
+import DataSources from "./DataSources"
 import { useCatalog, type Channel } from "./catalog"
 import CatalogViews, {
   ChannelLogo,
@@ -43,6 +44,11 @@ function Icon({ children, ...props }: IconProps & { children: ReactNode }) {
 }
 
 const icons = {
+  data: (
+    <Icon className="size-5">
+      <path d="M3 3v18h18M7 16v-5M12 16V7M17 16v-8" />
+    </Icon>
+  ),
   home: (
     <Icon className="size-5">
       <path d="m3 11 9-8 9 8" />
@@ -467,7 +473,15 @@ export default function App() {
     }
   })
   const [active, setActive] = useState("Home")
+  const [dataSourcesSelected, setDataSourcesSelected] = useState(false)
+  const selectedNav = dataSourcesSelected ? "Data sources" : active
   const [query, setQuery] = useState("")
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const searchToggle = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (mobileSearchOpen) searchInput.current?.focus()
+  }, [mobileSearchOpen])
   const [category, setCategory] = useState("all")
   const [country, setCountry] = useState("all")
   const [visible, setVisible] = useState(20)
@@ -560,10 +574,19 @@ export default function App() {
     if (!recording.navigateRequest) return
     setSelected(null)
     setPlaying(null)
+    setDataSourcesSelected(false)
     setActive("Recordings")
   }, [recording.navigateRequest])
 
   function navigate(label: string) {
+    setDataSourcesSelected(label === "Data sources")
+    if (label === "Data sources") {
+      setMobileSearchOpen(false)
+      const panel = document.getElementById("data-sources")
+      panel?.focus({ preventScroll: true })
+      panel?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" })
+      return
+    }
     setActive(label)
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -591,6 +614,7 @@ export default function App() {
     ["Discover", icons.compass],
     ["Favorites", icons.heart],
     ["Recordings", icons.record],
+    ["Data sources", icons.data],
   ] as const
 
   return (
@@ -608,12 +632,12 @@ export default function App() {
               key={label}
               onClick={() => navigate(label)}
               className={`flex w-full items-center gap-3  px-4 py-3 text-sm font-medium transition ${
-                active === label
+                selectedNav === label
                   ? "bg-white/8 text-white"
                   : "text-white/60 hover:bg-white/4 hover:text-white/80"
               }`}
             >
-              <span className={active === label ? "text-[#ff6a5f]" : ""}>
+              <span className={selectedNav === label ? "text-[#ff6a5f]" : ""}>
                 {icon}
               </span>
               {label}
@@ -642,20 +666,37 @@ export default function App() {
       </aside>
 
       <main className="min-h-screen lg:pl-60">
-        <header className="sticky top-0 z-20 flex h-20 items-center gap-3 border-b border-white/6 bg-[#101112e8] px-4 backdrop-blur-xl sm:px-7 lg:px-10">
+        <header className="sticky top-0 z-20 grid grid-cols-[1fr_auto_auto] h-20 items-center gap-2 sm:flex sm:gap-3 border-b border-white/6 bg-[#101112e8] px-4 backdrop-blur-xl sm:px-7 lg:px-10">
           <button
             onClick={() => navigate("Home")}
             className="mr-auto flex items-center gap-2 lg:hidden"
           >
             <Brand />
           </button>
-          <label className="relative hidden w-full max-w-md sm:block lg:mr-auto">
+          <button
+            ref={searchToggle}
+            className="mobile-search-toggle sm:hidden"
+            aria-label={mobileSearchOpen ? "Close search" : "Open search"}
+            aria-expanded={mobileSearchOpen}
+            aria-controls="channel-search"
+            onClick={() => setMobileSearchOpen((open) => !open)}
+          >{mobileSearchOpen ? icons.close : icons.search}</button>
+          <label id="channel-search" className={`channel-search relative w-full max-w-md lg:mr-auto ${mobileSearchOpen ? "is-open" : ""}`}>
+
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60">
               {icons.search}
             </span>
             <input
+              ref={searchInput}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && mobileSearchOpen) {
+                  setMobileSearchOpen(false)
+                  searchToggle.current?.focus()
+                }
+              }}
               value={query}
               onChange={(event) => {
+                setDataSourcesSelected(false)
                 setQuery(event.target.value)
                 if (event.target.value) setActive("Discover")
               }}
@@ -728,36 +769,6 @@ export default function App() {
           </div>
         )}
         <div className="mx-auto max-w-[1580px] px-4 pb-28 pt-6 sm:px-7 lg:px-10 lg:pb-14">
-          <label className="relative mb-5 block sm:hidden">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60">
-              {icons.search}
-            </span>
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                if (event.target.value) setActive("Discover")
-              }}
-              aria-label="Search channels"
-              placeholder="Search live channels…"
-              className="h-11 w-full  border border-white/8 bg-white/[0.045] pl-12 pr-10 text-sm outline-none"
-            />
-            {query && (
-              <button
-                aria-label="Clear search"
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                onClick={(event) => {
-                  setQuery("")
-                  event.currentTarget.parentElement
-                    ?.querySelector("input")
-                    ?.focus()
-                }}
-              >
-                ×
-              </button>
-            )}
-          </label>
-
           {(active === "Home" || active === "Discover") &&
             featured &&
             !loading && (
@@ -919,31 +930,17 @@ export default function App() {
               )}
             </>
           )}
-          <details className="catalog-source-status">
-            <summary>iptv-org data sources</summary>
-            <ul>
-              {Object.entries(endpointStatus).map(([name, status]) => (
-                <li key={name}>
-                  {name}:{" "}
-                  {status.state === "ready"
-                    ? `${status.count.toLocaleString()} records`
-                    : status.state === "loading"
-                      ? "Loading…"
-                      : "Unavailable"}
-                </li>
-              ))}
-            </ul>
-          </details>
+          <DataSources statuses={endpointStatus} />
         </div>
       </main>
 
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex justify-around  border border-white/10 bg-[#191b1deF] p-2 shadow-2xl backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-white/10 bg-[#191b1d] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden">
         {nav.map(([label, icon]) => (
           <button
             key={label}
             onClick={() => navigate(label)}
-            className={`flex min-w-14 flex-col items-center gap-1  px-3 py-2 text-[9px] font-semibold ${
-              active === label ? "bg-white/8 text-[#ff6b61]" : "text-white/60"
+            className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-2 text-[9px] font-semibold ${
+              selectedNav === label ? "bg-white/8 text-[#ff6b61]" : "text-white/60"
             }`}
           >
             {icon}

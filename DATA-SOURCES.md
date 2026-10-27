@@ -34,3 +34,23 @@ Live check on 2026-10-26: guides.json returned 180,678 records; zero records con
 
 ## Live thumbnail fallback
 When programme art is missing or fails, visible cards capture a frame from one of the channel’s first two real stream URLs. At most three capture pipelines run at once, each with a 10-second limit. Streams are disconnected after the frame is captured. A five-minute cache (at most 100 JPEGs) avoids repeated work on navigation. Snapshots are labelled with capture time and do not claim programme identity. CORS-restricted, offline or unsupported streams still show an unavailable state. No external proxy or fabricated image is used.
+
+### Recording compatibility
+
+Recording prefers the video's native `captureStream()` where available. Otherwise,
+`src/stream-capture.ts` combines a canvas capture (up to 1280×720 at 24 fps) with
+Web Audio routed from the recording video into a MediaStream destination. The
+AudioContext is resumed during the recording form's submit gesture. MediaRecorder
+selects a supported WebM or MP4 format. No camera or microphone is requested.
+
+This fallback targets browsers without video-element capture, including Safari,
+but does not bypass broadcaster CORS restrictions, codec support, autoplay rules,
+or mobile background suspension. Canvas recordings stop and preserve partial
+output when the tab becomes hidden or playback/audio is interrupted. Keep the tab
+visible and device awake, including for scheduled starts. Native HLS audio behavior
+must still be verified on physical Apple devices; Chromium emulation is not an iOS
+compatibility certification.
+
+The development-only `/tests/recording-browser.html?fallback` fixture disables
+video-element capture and checks that saved output decodes with non-silent audio.
+Its generated tone and frames are test data only, never imported into the app.

@@ -1,6 +1,7 @@
 import "./recording-updates.css"
 import { scheduleAction, validateSchedule } from "./recording-policy"
 import Hls from "hls.js"
+import { canCaptureStream, prepareCaptureAudio, captureVideo } from "./stream-capture"
 import {
   createContext,
   useContext,
@@ -65,6 +66,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const stopRef = useRef<() => void>(() => {})
   const urls = useRef<string[]>([])
+  const captureAudio = useRef<AudioContext | null>(null)
   const jobRef = useRef(job)
   jobRef.current = job
 
@@ -103,6 +105,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     let recorderStarted = false
     let timeout: ReturnType<typeof setTimeout> | undefined
     const chunks: Blob[] = []
+    const audio = captureAudio.current
+    let disposeCapture: (() => void) | undefined
     const video = document.createElement("video") as HTMLVideoElement & {
       captureStream?: () => MediaStream
       mozCaptureStream?: () => MediaStream
@@ -114,7 +118,11 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout)
       hls?.destroy()
       hls = null
+      disposeCapture?.()
       capture?.getTracks().forEach((track) => track.stop())
+      if (audio) audio.onstatechange = null
+      if (audio && audio.state !== "closed") void audio.close().catch(() => {})
+      if (captureAudio.current === audio) captureAudio.current = null
       video.pause()
       video.removeAttribute("src")
       video.load()
@@ -162,12 +170,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       if (disposed || finishing || recorder) return
       clearTimeout(timeout)
       try {
-        const method = video.captureStream || video.mozCaptureStream
-        if (!method || typeof MediaRecorder === "undefined")
-          throw new Error(
-            "Recording is not supported in this browser. Try desktop Chrome or Firefox.",
-          )
-        capture = method.call(video)
+        const captured = captureVideo(video, audio, finish)
+        capture = captured.stream
+        disposeCapture = captured.dispose
         if (!capture.getVideoTracks().length)
           throw new Error(
             "This stream does not expose a video track for recording. Try another channel.",
@@ -235,7 +240,9 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         setJob((current) => current && { ...current, state: "recording" })
         setMessage("")
       } catch (reason) {
-        finish((reason as Error).message)
+        finish((reason as Error).name === "SecurityError"
+          ? "This broadcaster blocks browser recording. Try another channel."
+          : (reason as Error).message)
       }
     }
     function connect() {
@@ -281,6 +288,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout)
       record()
     }
+    video.onpause = () => {
+      if (audio && recorderStarted && !finishing && !disposed)
+        finish("The browser paused capture. Keep this tab active and start a new recording. Any captured video is available below.")
+    }
     video.onerror = fail
     video.onended = () =>
       finish("The broadcast ended. Any captured video is available below.")
@@ -320,10 +331,21 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         connect()
       }
     }
+    if (audio) audio.onstatechange = () => {
+      if (audio.state !== "running" && recorderStarted && !finishing && !disposed)
+        finish("Audio capture was interrupted by the browser. Any captured video is available below.")
+    }
+    // Canvas frames cannot reliably advance in a background mobile tab.
+    const visibilityChanged = () => {
+      if (audio && document.hidden && recorderStarted)
+        finish("Recording stopped when this tab became inactive. Any captured video is available below.")
+    }
+    document.addEventListener("visibilitychange", visibilityChanged)
     const timer = setInterval(tick, 500)
     tick()
     return () => {
       disposed = true
+      document.removeEventListener("visibilitychange", visibilityChanged)
       clearInterval(timer)
       clearTimeout(timeout)
       if (recorder && recorder.state !== "inactive") recorder.stop()
@@ -388,19 +410,14 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                 return
               }
               const { from, to } = schedule
-              const probe = document.createElement(
-                "video",
-              ) as HTMLVideoElement & {
-                captureStream?: unknown
-                mozCaptureStream?: unknown
+              if (!canCaptureStream()) {
+                setError("This browser does not support video recording. Update your browser or try another device.")
+                return
               }
-              if (
-                typeof MediaRecorder === "undefined" ||
-                !(probe.captureStream || probe.mozCaptureStream)
-              ) {
-                setError(
-                  "Recording requires a browser with video capture support. Try desktop Chrome or Firefox.",
-                )
+              try {
+                captureAudio.current = prepareCaptureAudio()
+              } catch {
+                setError("Audio capture could not be initialized. Reload this page and try again.")
                 return
               }
               setMessage("")
@@ -460,7 +477,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                 <p id="record-help" className="record-notice">
                   Times use your device’s timezone (
                   {Intl.DateTimeFormat().resolvedOptions().timeZone}). Keep this
-                  tab open and your device awake. Recordings stay in this
+                  tab visible and your device awake. Recordings stay in this
                   session until you save them. Maximum 512 MB per recording.
                 </p>
                 <p id="record-error" role="alert" className="record-error">
@@ -576,7 +593,7 @@ export function RecordingLibrary() {
       <p className="muted">Watch now. Keep it for later.</p>
       <p className="record-library-description">
         Choose Record channel from any preview or player. Start now or schedule
-        a time. Keep this tab open and your device awake, then save your
+        a time. Keep this tab visible and your device awake, then save your
         finished video before leaving.
       </p>
       {job && (

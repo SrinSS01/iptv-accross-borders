@@ -10,6 +10,14 @@ import {
 } from "../src/recording"
 import "../src/index.css"
 
+const nativeCapture = (HTMLVideoElement.prototype as HTMLVideoElement & {
+  captureStream?: () => MediaStream
+}).captureStream
+if (new URLSearchParams(location.search).has("fallback")) {
+  Object.defineProperty(HTMLVideoElement.prototype, "captureStream", { value: undefined, configurable: true })
+  Object.defineProperty(HTMLVideoElement.prototype, "mozCaptureStream", { value: undefined, configurable: true })
+}
+
 function Fixture() {
   const [url, setUrl] = useState("")
   const [preparing, setPreparing] = useState(false)
@@ -24,13 +32,21 @@ function Fixture() {
     }
     video.onplaying = async () => {
       const bytes = await (await fetch(saved[0].url)).arrayBuffer()
-      const captured = (video as HTMLVideoElement & {
-        captureStream: () => MediaStream
-      }).captureStream()
-      setResult(
-        `PASS: saved video plays at ${video.videoWidth}×${video.videoHeight}; ${bytes.byteLength} bytes; ${captured.getAudioTracks().length} audio track`,
-      )
-      captured.getTracks().forEach((track) => track.stop())
+      const captured = nativeCapture?.call(video)
+      const audio = new AudioContext()
+      try {
+        const decoded = await audio.decodeAudioData(bytes.slice(0))
+        let peak = 0
+        for (const sample of decoded.getChannelData(0)) peak = Math.max(peak, Math.abs(sample))
+        setResult(
+          `${peak > 0.01 ? "PASS" : "FAIL"}: saved video plays at ${video.videoWidth}×${video.videoHeight}; ${bytes.byteLength} bytes; audio peak ${peak.toFixed(3)}`,
+        )
+      } catch {
+        setResult("FAIL: saved recording audio could not be decoded")
+      } finally {
+        captured?.getTracks().forEach((track) => track.stop())
+        void audio.close()
+      }
     }
     video.onerror = () => setResult("FAIL: recorded video does not decode")
     video.src = saved[0].url

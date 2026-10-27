@@ -83,8 +83,7 @@ select option { background: var(--surface); color: var(--text); }
 
 /* Shared catalog filters: native modal pickers with ordinary searchable buttons. */
 .channel-filters { margin-bottom: 28px; }
-.filter-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 20px; padding: 20px; border: 1px solid var(--border); background: var(--surface); }
-.filter-intro { display: flex; align-items: center; gap: 10px; align-self: center; color: var(--muted); font-size: 12px; margin-right: 12px; }
+.filter-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 20px; padding: 20px; border: 1px solid var(--border); background: var(--surface); }
 .filter-field { min-width: 0; }
 .filter-label { display: block; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
 .filter-trigger { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; height: 44px; padding: 0 14px; color: var(--text); background: var(--background); border: 1px solid var(--border); font-size: 13px; text-align: left; }
@@ -123,9 +122,9 @@ select option { background: var(--surface); color: var(--text); }
 .channel-logo-placeholder svg { width: 40px; height: 40px; }
 .channel-logo-placeholder > span { font-size: 10px; letter-spacing: .03em; }
 .channel-logo-placeholder.is-compact svg { width: 25px; height: 25px; }
-@media (max-width: 1200px) { .filter-intro { display: none; } .filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; } }
-@media (max-width: 640px) { .filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 16px; gap: 16px 12px; } .filter-intro { display: flex; grid-column: 1; grid-row: 1; margin: 0; font-size: 11px; } .filter-reset { grid-column: 2; grid-row: 1; height: 24px; justify-self: end; font-size: 11px; } .filter-field { grid-row: 2; } .filter-picker::backdrop { background: #0009; } .filter-search input { font-size: 16px; } .filter-option { min-height: 46px; font-size: 14px; } }
-@media (max-width: 360px) { .filter-bar { grid-template-columns: minmax(0, 1fr); } .filter-intro { display: none; } .filter-reset { grid-column: 1; } .filter-field { grid-row: auto; } }
+@media (max-width: 1200px) { .filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 16px; } }
+@media (max-width: 640px) { .filter-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 16px; gap: 16px 12px; } .filter-reset { grid-column: 2; grid-row: 2; height: 24px; justify-self: end; font-size: 11px; } .filter-field { grid-row: 1; } .filter-picker::backdrop { background: #0009; } .filter-search input { font-size: 16px; } .filter-option { min-height: 46px; font-size: 14px; } }
+@media (max-width: 360px) { .filter-bar { grid-template-columns: minmax(0, 1fr); } .filter-reset { grid-column: 1; grid-row: auto; } .filter-field { grid-row: auto; } }
 
 /* Normal document layer: filters under sticky header (20), sidebars (30), players (50). */
 .filter-picker { z-index: 15; }
@@ -134,3 +133,37 @@ select option { background: var(--surface); color: var(--text); }
 /* Larger channel logos; interface icons retain their original sizes. */
 .channel-mark.compact { width: 44px; height: 44px; }
 .channel-mark.compact svg { width: 28px; height: 28px; }
+
+/* Mobile search expands within the sticky header's stacking context. */
+.mobile-search-toggle { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex-shrink:0; border:1px solid var(--border); }
+@media (min-width:640px) { .mobile-search-toggle { display:none; } }
+@media (max-width:639px) {
+  .channel-search { display:none; }
+  .channel-search.is-open { display:block; position:absolute; top:100%; left:0; right:0; max-width:none; padding:12px 16px; background:#101112; border-bottom:1px solid var(--border); box-shadow:0 12px 24px #0005; }
+  .channel-search > span { left:32px; }
+  .channel-search > button { right:28px; }
+  .channel-search input { font-size:16px; }
+}
+
+.data-sources { scroll-margin-top:96px; margin-top:48px; padding-top:24px; border-top:1px solid var(--border); }
+.data-sources-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; }
+.data-sources h2 { margin-top:6px; font-size:22px; font-weight:600; }
+.data-sources-health { padding:8px 12px; border:1px solid var(--border); font:11px ui-monospace,monospace; color:var(--muted); }
+.data-sources-note, .data-sources-footnote { color:var(--muted); font-size:12px; line-height:1.7; }
+.data-sources-note { margin:12px 0 20px; }
+.data-sources-footnote { margin-top:16px; max-width:80ch; }
+.data-sources-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--border); background:var(--surface); }
+.data-source-group { min-width:0; padding:20px; }
+.data-source-group + .data-source-group { border-left:1px solid var(--border); }
+.data-source-group h3 { margin-bottom:12px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+.data-source-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border); }
+.data-source-row dt { font-size:13px; text-transform:capitalize; }
+.data-source-row a { display:inline-flex; align-items:center; gap:8px; min-height:32px; }
+.data-source-row a:hover { color:var(--primary, #ff4655); }
+.data-source-row a span { color:var(--muted); font-size:12px; }
+.data-source-row dd { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.data-source-row strong { font:500 18px ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+.data-source-state { color:var(--muted); font-size:10px; }
+.data-source-unavailable { color:var(--accent); font-size:12px; }
+.data-source-skeleton { display:block; height:18px; width:64px; background:var(--border); }
+@media (max-width:767px) { .data-sources-grid { grid-template-columns:1fr; } .data-source-group + .data-source-group { border-left:0; border-top:1px solid var(--border); } .data-source-group { padding:16px; } }

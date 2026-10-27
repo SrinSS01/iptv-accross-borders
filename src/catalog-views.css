@@ -63,9 +63,6 @@
 .programme-skeleton span { height:12px; background:#ffffff0c; animation:pulse 1.8s infinite; }
 .programme-skeleton span:last-child { width:55%; }
 .catalog-section { scroll-margin-top:104px; }
-.catalog-source-status { margin-top:32px; color:var(--muted); font-size:11px; }
-.catalog-source-status summary { cursor:pointer; }
-.catalog-source-status ul { display:flex; flex-wrap:wrap; gap:12px 24px; margin-top:12px; }
 @media(min-width:700px) { .catalog-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(min-width:1350px) { .catalog-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 @media(min-width:1700px) { .catalog-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
