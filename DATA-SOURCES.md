@@ -26,7 +26,7 @@ A failed optional endpoint is exposed through `endpointStatus`; unavailable meta
 
 The upstream EPG project is a generator/discovery project, not a guaranteed centrally hosted schedule API. Sources may be missing, expired, offline, CORS-blocked or too large for this browser. These are surfaced as unavailable/empty guide states. A guide cannot guarantee that every listed programme is being transmitted by the chosen stream.
 
-The local files under `tests/` contain synthetic test fixtures only. They are not imported by the production application or emitted by the Vite production entrypoint.
+The local files under `tests/` contain synthetic test fixtures only. They are available only through explicit development test routes, which return 404 in production. Synthetic media is never used by the runtime catalog.
 
 XMLTV timestamp and image semantics follow the [XMLTV DTD](https://github.com/XMLTV/xmltv/blob/master/xmltv.dtd). External DTD declarations are stripped; internal entity declarations are rejected.
 
@@ -37,20 +37,21 @@ When programme art is missing or fails, visible cards capture a frame from one o
 
 ### Recording compatibility
 
-Recording prefers the video's native `captureStream()` where available. Otherwise,
-`src/stream-capture.ts` combines a canvas capture (up to 1280×720 at 24 fps) with
-Web Audio routed from the recording video into a MediaStream destination. The
-AudioContext is resumed during the recording form's submit gesture. MediaRecorder
-selects a supported WebM or MP4 format. No camera or microphone is requested.
+HLS recording now uses a same-origin, catalog-authorized Next.js proxy to collect
+unencrypted TS/fMP4 segments, including initialization ranges and default separate
+audio. It selects a fixed rendition at or below 720p when available, caps combined
+source data at 128 MiB, and remuxes in a single-thread FFmpeg WASM worker without
+re-encoding. Output is MP4 where compatible or Matroska otherwise. Discontinuities
+become separate parts. Finalization failures retain source data for retry; cancel
+releases the worker and collected data.
 
-This fallback targets browsers without video-element capture, including Safari,
-but does not bypass broadcaster CORS restrictions, codec support, autoplay rules,
-or mobile background suspension. Canvas recordings stop and preserve partial
-output when the tab becomes hidden or playback/audio is interrupted. Keep the tab
-visible and device awake, including for scheduled starts. Native HLS audio behavior
-must still be verified on physical Apple devices; Chromium emulation is not an iOS
-compatibility certification.
+Browser capture remains an explicit fallback: native video capture where available,
+or canvas (up to 1280×720 at 24 fps) plus Web Audio. No camera or microphone is used.
+Keep the tab visible and device awake, including for scheduled starts. Source
+restrictions, unsupported encryption/codecs, autoplay rules, mobile suspension and
+browser memory limits still apply. Proxy access cannot bypass DRM or upstream
+authentication. Safari/iPhone behavior is not certified by Chromium tests.
 
-The development-only `/tests/recording-browser.html?fallback` fixture disables
-video-element capture and checks that saved output decodes with non-silent audio.
-Its generated tone and frames are test data only, never imported into the app.
+The development-only `/test/recording?fallback` fixture checks the capture fallback;
+`/test/wasm` plus `tests/recording-e2e.mjs` checks actual generated video/audio through
+the WASM engine. Native ffmpeg/ffprobe are used only to generate and verify test media.

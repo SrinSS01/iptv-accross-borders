@@ -1,4 +1,5 @@
 import Hls from "hls.js"
+import { getStreamUrl } from "./stream-url"
 import { useEffect, useRef, useState } from "react"
 import type { Channel } from "./catalog"
 
@@ -78,10 +79,10 @@ export default function LiveThumbnail({ channel, onLoaded }: { channel: Channel;
       if (!entries.some(entry => entry.isIntersecting) || started) return
       started = true; observer.disconnect(); setStatus("Loading live preview")
       void (async () => {
-        for (const stream of channel.streams.slice(0, 2)) {
+        for (const [index, stream] of channel.streams.slice(0, 2).entries()) {
           if (controller.signal.aborted) return
           try {
-            const url = await capture(stream.url, controller.signal)
+            const url = await capture(getStreamUrl(channel.id, index, stream.url), controller.signal)
             if (controller.signal.aborted) return
             const result = { url, captured: Date.now() }
             cache.set(channel.id, result)

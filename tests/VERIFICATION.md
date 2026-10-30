@@ -1,4 +1,62 @@
-# Verification — 2026-10-26
+# Next.js / FFmpeg WASM verification — 2026-10-30
+
+## Automated checks
+
+- `pnpm typecheck`: passed.
+- `pnpm test`: 31 tests passed (catalog, scheduling, HLS parsing/selection, live deduplication, ranges, proxy grants, DNS pinning, redirects, cancellation, bounds and gzip catalog transport).
+- `pnpm build`: optimized Next.js 16.4.3 production build passed with TypeScript and route generation.
+- `git diff --check`: passed.
+
+## Recording browser checks
+
+`tests/recording-e2e.mjs` uses Playwright with installed Brave/Chromium at 390×844,
+native FFmpeg-generated test media, the real browser WASM worker, and ffprobe/audio
+sample analysis on downloaded outputs. Only upstream fixture responses are mocked.
+
+Thirteen scenarios passed: TS VOD, live manual stop, fragmented MP4 with byte ranges,
+separate default audio, discontinuities saved as separate parts, retry after forced
+finalization failure, encrypted-source rejection with explicit capture selection,
+Matroska fallback, cancel during finalization, network interruption preserving a
+partial clip, oversized resource preserving a partial clip, scheduled start/end,
+and tab-hidden stop. Saved recordings had video and non-silent audio (peaks above
+0.01). Full fixtures produced approximately 12-second files; discontinuities
+produced two approximately 6-second files. No page errors were observed.
+
+`/test/recording` and `/test/recording?fallback` additionally passed direct capture
+and canvas/Web Audio capture checks with 320×180 decoded video and non-silent audio.
+
+Reproduce with the dev server running and native ffmpeg/ffprobe installed:
+
+```sh
+BROWSER_PATH=/usr/bin/brave pnpm test:e2e
+BROWSER_PATH=/usr/bin/brave node tests/ui-e2e.mjs
+```
+
+Use `SCENARIOS=live,retry` to run selected recording cases. Omit BROWSER_PATH when
+Playwright Chromium is installed. Screenshots and generated media go to temporary
+folders, never the runtime catalog.
+
+## Production checks
+
+- Desktop 1440×1000 and mobile 390×844: navigation, 13-source panel, mobile search expansion/collapse, sticky positioning, query retention and focus passed. No horizontal overflow or page errors.
+- Production `/test/recording` and `/test/wasm`: HTTP 404.
+- Same-origin worker, core JS and WASM assets: HTTP 200 with appropriate MIME types.
+- Invalid signed resource grant: HTTP 403.
+- Real France24.fr request through the built proxy: HTTP 200 playlist and 6,539,768-byte MPEG-TS segment; ffprobe identified H.264 video and AAC audio. Initial catalog loading took about 13 seconds after enabling bounded gzip catalog transport. This is one live-source check, not a guarantee for every broadcaster.
+
+## Remaining external validation
+
+Vercel deployment/protection checks await user-provided tooling; nothing has been
+deployed or pushed for this migration. Physical Android/iPhone testing is pending.
+Playwright WebKit previously could not launch because this host lacks required
+libraries; Chromium emulation does not establish Safari compatibility. Browser
+memory, tab suspension, upstream restrictions and Vercel quotas remain constraints.
+
+---
+
+# Archived verification — 2026-10-26
+
+This records the earlier Vite build. It is historical evidence, not verification of the Next.js/WASM migration. Current browser fixtures use `/test/recording` and `/test/wasm`; the former HTML entrypoints no longer apply.
 
 ## Automated checks
 

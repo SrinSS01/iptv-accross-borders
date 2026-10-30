@@ -1,41 +1,28 @@
-# figma-make-app
+# IPTV Accross Borders
 
-React + Vite + Tailwind CSS project running inside Figma Make.
+Next.js App Router + React + Tailwind CSS v4 application.
 
-## Development Server
+## Development
 
-A Vite development server is **already running** on `$PORT` (default 8443). You don't need to start it manually.
+`pnpm dev` starts Next.js on port 8443 using webpack for recording-worker compatibility. Check whether it is already running before starting another server. `pnpm build` creates the production app; `pnpm start` serves it using `PORT` or port 3000.
 
-- Preview URL: The user can access the running app through the preview panel
-- Hot reload: Changes to source files are reflected immediately
+Use Node.js 22.19+ and pnpm 10.34.3. `pnpm install` and `pnpm build` prepare ignored FFmpeg assets under `public/ffmpeg/`; do not commit generated WASM binaries.
 
-## Project Structure
+## Structure
 
-This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
+- `src/app/layout.tsx` imports global CSS and defines metadata.
+- `src/app/page.tsx` mounts the client-only browser application through `client-app.tsx` and `browser-app.tsx`.
+- `src/App.tsx` owns the existing browsing UI; preserve its design and navigation behavior.
+- `src/app/api/` contains server-only stream proxy routes.
+- `src/server/` contains outbound validation, catalog authorization and proxy helpers.
+- `src/recording.tsx` owns recording UI/lifecycle; browser recording engines are separate modules.
+- `src/index.css` owns global CSS and Tailwind v4 tokens.
+- `public/` contains static branding; `scripts/copy-ffmpeg.mjs` prepares same-origin recording dependencies.
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
-- `.mise.toml` - Toolchain versions for Node.js and pnpm
+## Quality and deployment
 
-## Dependencies
+Run `pnpm typecheck`, `pnpm test`, and `pnpm build` for material changes. Development-only test routes must return 404 in production. Use real catalog data in runtime UI; synthetic media belongs only in explicit test fixtures.
 
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
+Keep browser APIs behind the client boundary and never include server secrets in client bundles. The stream proxy must not become an arbitrary URL fetcher. Deployment requires Vercel or another Next.js server; GitHub Pages/static export is unsupported. Read `DEPLOYMENT.md` before deployment changes.
 
-## Styling
-
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import 'tailwindcss';`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This scaffold does not need a Tailwind config file or PostCSS config.
-
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
-
-## Code quality
-
-- Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.
-- Ensure JSX tags are closed and braces are balanced.
-- Export components as default exports.
+Use Tailwind utilities in JSX and global CSS in `src/index.css`; keep CSS imports first. Preserve sharp, square components. Keep JSX balanced and use double quotes for strings containing apostrophes.

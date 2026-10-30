@@ -1,32 +1,40 @@
-# GitHub Pages deployment
+# Next.js deployment on Vercel
 
-The static app is ready for the existing `SrinSS01/iptv-accross-borders` repository. The workflow is `.github/workflows/deploy-pages.yml` and deploys pushes to `main`, or a manual **Run workflow**.
+This application now requires a Node.js Next.js runtime for its stream proxy. GitHub Pages and `output: "export"` cannot run it. The GitHub workflow checks the application; Vercel's Git integration owns deployment.
 
-## First deployment
+## Local development
 
-1. In the repository, open **Settings → Pages → Build and deployment** and set **Source** to **GitHub Actions**.
-2. Push these changes to `main`.
-3. Open **Actions → Deploy IPTV Accross Borders to Pages**. The deploy job reports the actual site URL when successful.
-
-The expected project-site address is `https://srinss01.github.io/iptv-accross-borders/`. This document does not establish that the site has been deployed. A custom domain, if configured later, can change the address.
-
-The build uses Node 22 and pnpm 10.34.3, installs the lockfile, checks TypeScript, tests recording scheduling, and uploads only `dist`. Deployment uses GitHub's Pages artifact and OIDC flow, with write permissions limited to the deploy job. It needs no manually-created deployment secret.
-
-## Base paths
-
-The workflow supplies `VITE_BASE_PATH` from GitHub's configured Pages base path. Vite uses it before the Figma preview base. This supports the repository subdirectory and root/custom-domain deployments without hardcoding a GitHub username into the application.
-
-To check the project-site build locally:
+Use Node.js 22.19 or newer and pnpm 10.34.3:
 
 ```sh
-VITE_BASE_PATH=/iptv-accross-borders/ pnpm build
-pnpm preview
+pnpm install
+pnpm dev
 ```
 
-Open the preview host with `/iptv-accross-borders/` appended. Local development continues at `/` when `VITE_BASE_PATH` is unset. Public assets must respect Vite's base; avoid root-relative runtime URLs for app-owned files. The brand component renders inline SVG, so its mark works at either base.
+The development URL defaults to `http://localhost:8443`. `pnpm build` creates the production application, and `pnpm start` starts it (port 3000 by default, or the `PORT` environment variable). `pnpm typecheck` and `pnpm test` run the source checks. With the dev server running, `BROWSER_PATH=/path/to/chromium pnpm test:e2e` generates test media and verifies real WASM recording; this requires native ffmpeg/ffprobe. Omit BROWSER_PATH if Playwright Chromium is installed.
 
-## Runtime limits
+Installation/build copies the pinned single-thread FFmpeg core into `public/ffmpeg/`. These generated files are ignored by Git but included in the deployed site. The browser downloads them only when preparing WASM recording. The module worker and its imports are copied to `/ffmpeg/worker/` to preserve browser-native dynamic core loading. Keep the worker, core JavaScript, and WASM files on the application's origin so Vercel's authentication cookie applies. No cross-origin-isolation headers or exposed protection bypass tokens are required.
 
-GitHub Pages hosts static files. Streams, logos and programme guides still depend on their providers' availability, HTTPS and browser cross-origin policies. Pages does not proxy streams or bypass those policies. Browser recording requires an open tab and awake device; the workflow does not run scheduled recordings. Save completed recordings before leaving the tab.
+## Vercel setup
 
-References: [GitHub custom Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), [Vite Pages deployment](https://vite.dev/guide/static-deploy.html#github-pages).
+1. Import this repository into Vercel, choose the **Next.js** framework, and retain the package-managed install/build commands. Use Node.js 22 or newer.
+2. Set the server-only `PROXY_SIGNING_SECRET` (at least 32 characters; see `.env.example`) to a randomly generated value. Do not prefix it with `NEXT_PUBLIC_` or commit its value.
+3. Under **Settings → Deployment Protection**, enable **Vercel Authentication → All Deployments**. Confirm both preview and production domains are protected, not only the generated preview URLs. This uses the owner's Vercel login; the application has no separate login screen.
+4. Deploy a preview. Before production promotion, confirm an unauthenticated session cannot load its page, API, or FFmpeg assets. In an authenticated session, check stream playback, snapshots, and a short recording with audible audio.
+5. Connect `main` as the production branch once validation passes. Do not enable paid add-ons or a Pro trial merely to implement this setup.
+
+Vercel's current documentation says All Deployments protection is available on all plans. Recheck the account's available settings at deployment time. If it is not offered free, the user has authorized a public, login-free fallback; explicitly report this change rather than implying a public site is private. The proxy's catalog restriction and outbound address validation must remain active in either mode.
+
+A deployment URL is not established by this document. Deployment requires the project owner's Vercel access or an authenticated CLI session.
+
+## Runtime and migration limits
+
+The proxy handles individual playlists and media resources, not long-running server recording jobs. Hosting duration, transfer, and response limits still apply; free deployment protection does not imply unlimited streaming bandwidth. Upstream authentication, DRM, outages, and server-side blocking are not bypassed.
+
+Recordings run in the browser, require a visible tab and awake device, and remain in the current session until saved. The WASM recorder caps combined source data at 128 MiB; the browser needs additional memory to finalize a file. There is no persistent storage or server scheduler.
+
+Favorites and view preferences remain local to the browser origin. Existing preferences from the old GitHub Pages domain do not automatically transfer to the new Vercel domain. Old Pages deployment artifacts are removed from this repository; disable the old Pages site separately when it is no longer needed.
+
+Development-only recording checks are available at `/test/recording`, `/test/recording?fallback`, and `/test/wasm` (the latter needs the Playwright-generated HLS fixture at the proxy boundary). These routes return 404 in production. Generated test media is not used as runtime catalog or programme data.
+
+References: [Next.js deployment](https://nextjs.org/docs/app/getting-started/deploying), [Vercel protection](https://vercel.com/docs/deployment-protection#all-deployments), [Vercel function limits](https://vercel.com/docs/functions/limitations), [FFmpeg WASM](https://ffmpegwasm.netlify.app/docs/overview/).

@@ -1,4 +1,5 @@
 import Brand from "./Brand"
+import { getStreamUrl } from "./stream-url"
 import DataSources from "./DataSources"
 import { useCatalog, type Channel } from "./catalog"
 import CatalogViews, {
@@ -117,7 +118,7 @@ function Player({
     const video = videoRef.current
     if (!video) return
 
-    const source = activeStream.url
+    const source = getStreamUrl(channel.id, streamIndex, activeStream.url)
     let hls: Hls | null = null
     setFailed(false)
     setNeedsPlay(false)
@@ -178,7 +179,7 @@ function Player({
       video.removeAttribute("src")
       video.load()
     }
-  }, [activeStream, channel.streams.length, streamIndex])
+  }, [activeStream, channel.id, channel.streams.length, streamIndex])
 
   function startPlayback() {
     const video = videoRef.current
@@ -293,6 +294,7 @@ function ChannelPreview({
     const video = videoRef.current
     if (!video) return
 
+    const source = getStreamUrl(channel.id, streamIndex, activeStream.url)
     let hls: Hls | null = null
     const fail = () => {
       if (streamIndex < channel.streams.length - 1) {
@@ -311,18 +313,18 @@ function ChannelPreview({
     video.muted = true
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = activeStream.url
+      video.src = source
       video.addEventListener("loadedmetadata", play)
-    } else if (Hls.isSupported() && activeStream.url.includes(".m3u8")) {
+    } else if (Hls.isSupported() && source.includes(".m3u8")) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: true })
-      hls.loadSource(activeStream.url)
+      hls.loadSource(source)
       hls.attachMedia(video)
       hls.on(Hls.Events.MANIFEST_PARSED, play)
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) fail()
       })
     } else {
-      video.src = activeStream.url
+      video.src = source
       video.addEventListener("loadedmetadata", play)
     }
 
@@ -336,7 +338,7 @@ function ChannelPreview({
       video.removeAttribute("src")
       video.load()
     }
-  }, [activeStream, channel.streams.length, streamIndex])
+  }, [activeStream, channel.id, channel.streams.length, streamIndex])
 
   return (
     <>
@@ -753,7 +755,6 @@ export default function App() {
             </button>
             {recording.job && (
               <button
-                disabled={recording.job.state === "saving"}
                 onClick={recording.stop}
               >
                 <RecordActionIcon state={recording.job.state} />
@@ -762,8 +763,10 @@ export default function App() {
                   : recording.job.state === "connecting"
                     ? "Cancel recording"
                     : recording.job.state === "saving"
-                      ? "Saving…"
-                      : "End recording"}
+                      ? "Cancel finalization"
+                      : recording.job.state === "failed"
+                        ? "Discard recording"
+                        : "End recording"}
               </button>
             )}
           </div>

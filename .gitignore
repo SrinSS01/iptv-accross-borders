@@ -19,3 +19,10 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Next.js and generated same-origin recording engine assets
+.next/
+.vercel/
+public/ffmpeg/
+dist/
+!.env.example

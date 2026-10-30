@@ -7,3 +7,7 @@
 .record-library .record-item-highlighted:focus { outline: 1px solid var(--accent); outline-offset: 4px; }
 @keyframes record-saving-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .record-saving-icon { animation: none; } }
+.record-mode { display:grid; gap:10px; margin:20px 0 12px; padding:14px; border:1px solid var(--border); }
+.record-mode legend { padding:0 6px; font-size:12px; color:var(--muted); }
+.record-mode label { display:flex; align-items:center; gap:10px; margin:0; font-size:12px; }
+.record-mode input[type=radio] { width:16px; height:16px; min-height:0; margin:0; accent-color:var(--accent); }

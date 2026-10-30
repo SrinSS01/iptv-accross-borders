@@ -1,6 +1,9 @@
 import "./recording-updates.css"
 import { scheduleAction, validateSchedule } from "./recording-policy"
 import Hls from "hls.js"
+import { HlsRecorder } from "./recorders/hls-recorder"
+import { MAX_RECORDING_BYTES } from "./recorders/hls-policy"
+import { getStreamUrl } from "./stream-url"
 import { canCaptureStream, prepareCaptureAudio, captureVideo } from "./stream-capture"
 import {
   createContext,
@@ -20,8 +23,9 @@ type Job = {
   channel: RecordChannel
   start: number
   end?: number
-  state: "scheduled" | "connecting" | "recording" | "saving"
+  state: "scheduled" | "connecting" | "recording" | "saving" | "failed"
   bytes: number
+  mode: "hls" | "capture"
 }
 type Saved = {
   channelId: string
@@ -40,6 +44,7 @@ const RecordingContext = createContext<{
   open: (channel: RecordChannel) => void
   job: Job | null
   saved: Saved[]
+  retry: () => void
   stop: () => void
   message: string
   remove: (id: string) => void
@@ -50,9 +55,14 @@ const RecordingContext = createContext<{
 export function useRecording() {
   return useContext(RecordingContext)!
 }
-const MAX_BYTES = 512 * 1024 * 1024
+const MAX_BYTES = MAX_RECORDING_BYTES
 
 export function RecordingProvider({ children }: { children: ReactNode }) {
+  const [mode, setMode] = useState<"hls" | "capture">("hls")
+  const [preparing, setPreparing] = useState(false)
+  const prepared = useRef<HlsRecorder | null>(null)
+  const preparation = useRef(0)
+  const retryRef = useRef<() => void>(() => {})
   const [target, setTarget] = useState<RecordChannel | null>(null)
   const [start, setStart] = useState("")
   const [end, setEnd] = useState("")
@@ -84,6 +94,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("beforeunload", unload)
       urls.current.forEach(URL.revokeObjectURL)
+      preparation.current++
+      prepared.current?.dispose()
     }
   }, [])
 
@@ -92,6 +104,91 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initial = jobRef.current
     if (!initial) return
+    if (initial.mode === "hls") {
+      const engine = prepared.current
+      if (!engine) { setMessage("Recording tools were not prepared. Please start again."); setJob(null); return }
+      let disposed = false
+      let started = false
+      let finalizing = false
+      let reason = ""
+      const discard = (message = "Recording canceled.") => {
+        if (disposed) return
+        disposed = true
+        engine.dispose()
+        setMessage(message)
+        setJob(null)
+      }
+      const finalize = async () => {
+        if (disposed || finalizing) return
+        finalizing = true
+        setJob((current) => current && { ...current, state: "saving" })
+        setMessage(reason || "Finalizing recording…")
+        try {
+          const parts = await engine.finalize()
+          if (disposed) return
+          const name = initial.channel.name.replace(/[^a-z0-9]+/gi, "-")
+          const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+          const recordings = parts.map(({ blob, extension, part }) => {
+            const url = URL.createObjectURL(blob)
+            urls.current.push(url)
+            return { channelId: initial.channel.id, id: url, name: `${initial.channel.name}${parts.length > 1 ? ` · Part ${part}` : ""}`,
+              url, size: blob.size, filename: `${name}-${stamp}${parts.length > 1 ? `-part-${part}` : ""}.${extension}`, partial: !!reason }
+          })
+          setSaved((current) => [...recordings, ...current])
+          setMessage(reason ? `${reason} Captured video is ready to save.` : "Recording ready. Save the video before closing this tab.")
+          engine.dispose()
+          setJob(null)
+        } catch (error) {
+          if (!disposed) {
+            setMessage(`${(error as Error).message} Source data is retained in this tab; retry finalization or discard it.`)
+            setJob((current) => current && { ...current, state: "failed" })
+          }
+        } finally { finalizing = false }
+      }
+      retryRef.current = () => { void finalize() }
+      stopRef.current = () => {
+        if (!started || finalizing || jobRef.current?.state === "failed") discard()
+        else engine.stop()
+      }
+      const tick = () => {
+        if (disposed || finalizing || jobRef.current?.state === "failed") return
+        const action = scheduleAction(initial.start, initial.end, Date.now(), started)
+        if (action === "stop") { engine.stop(); return }
+        if (action === "missed-start" || action === "missed-window") {
+          discard("The recording window was missed while this tab was inactive."); return
+        }
+        if (action === "start") {
+          if (document.hidden) { discard("Keep this tab visible to start a recording."); return }
+          started = true
+          setJob((current) => current && { ...current, state: "recording" })
+          setMessage("")
+          void engine.collect((bytes) => {
+            if (!disposed) setJob((current) => current && { ...current, bytes })
+          }).then((message) => {
+            reason = message
+            if (!disposed) void finalize()
+          }).catch((error) => {
+            if (!disposed) discard((error as Error).message)
+          })
+        }
+      }
+      const visibility = () => {
+        if (document.hidden && started && !finalizing && jobRef.current?.state !== "failed")
+          engine.stop("Recording stopped because this tab became inactive.")
+      }
+      document.addEventListener("visibilitychange", visibility)
+      const timer = setInterval(tick, 500)
+      tick()
+      return () => {
+        disposed = true
+        clearInterval(timer)
+        document.removeEventListener("visibilitychange", visibility)
+        engine.dispose()
+        if (prepared.current === engine) prepared.current = null
+        stopRef.current = () => {}
+        retryRef.current = () => {}
+      }
+    }
     let disposed = false,
       started = false,
       finishing = false,
@@ -128,7 +225,14 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       video.load()
     }
     const finish = (reason = "") => {
-      if (finishing || disposed) return
+      if (disposed) return
+      if (finishing) {
+        disposed = true
+        cleanupMedia()
+        setMessage("Recording canceled.")
+        setJob(null)
+        return
+      }
       finishing = true
       clearTimeout(timeout)
       clearInterval(timer)
@@ -151,7 +255,15 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
           )
       }
     }
-    stopRef.current = () => finish()
+    stopRef.current = () => {
+      if (finishing && !disposed) {
+        disposed = true
+        clearInterval(timer)
+        cleanupMedia()
+        setMessage("Recording canceled.")
+        setJob(null)
+      } else finish()
+    }
     const fail = () => {
       if (disposed || finishing) return
       if (recorder) {
@@ -194,7 +306,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
           setJob((current) => current && { ...current, bytes })
           if (bytes >= MAX_BYTES)
             finish(
-              "The 512 MB browser recording limit was reached. Save this recording, then start a new one.",
+              "The 128 MB recording limit was reached. Save this recording, then start a new one.",
             )
         }
         recorder.onerror = () =>
@@ -251,7 +363,8 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout)
       hls?.destroy()
       hls = null
-      const source = initial!.channel.streams[sourceIndex]?.url
+      const original = initial!.channel.streams[sourceIndex]?.url
+      const source = original && getStreamUrl(initial!.channel.id, sourceIndex, original)
       if (!source) {
         finish("No stream source is available for this channel.")
         return
@@ -355,12 +468,16 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
   }, [identity])
 
   const open = (channel: RecordChannel) => {
+    setMode(channel.streams.some((stream) => /\.m3u8(?:[?#]|$)/i.test(stream.url)) ? "hls" : "capture")
     setStart("")
     setEnd("")
     setError("")
     setTarget(channel)
   }
   const close = () => {
+    preparation.current++
+    if (preparing) { prepared.current?.dispose(); prepared.current = null }
+    setPreparing(false)
     dialog.current?.close()
     setTarget(null)
   }
@@ -371,6 +488,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         job,
         saved,
         stop: () => stopRef.current(),
+        retry: () => retryRef.current(),
         message,
         navigateRequest,
         highlightedId,
@@ -399,9 +517,10 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
         >
           <form
             noValidate
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
-              if (job) return
+              if (job || preparing) return
+              setError("")
               const now = Date.now()
               const schedule = validateSchedule(start, end, now)
               if ("error" in schedule) {
@@ -409,26 +528,45 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                 document.getElementById(schedule.field!)?.focus()
                 return
               }
-              const { from, to } = schedule
-              if (!canCaptureStream()) {
-                setError("This browser does not support video recording. Update your browser or try another device.")
-                return
-              }
-              try {
-                captureAudio.current = prepareCaptureAudio()
-              } catch {
-                setError("Audio capture could not be initialized. Reload this page and try again.")
-                return
+              const channel = target
+              let { from, to } = schedule
+              if (mode === "hls") {
+                const sourceIndex = channel.streams.findIndex((stream) => /\.m3u8(?:[?#]|$)/i.test(stream.url))
+                if (sourceIndex < 0) { setError("This channel has no HLS source. Choose browser capture."); return }
+                const engine = new HlsRecorder(getStreamUrl(channel.id, sourceIndex, channel.streams[sourceIndex].url))
+                const attempt = ++preparation.current
+                prepared.current = engine
+                setPreparing(true)
+                try {
+                  await engine.prepare()
+                  if (attempt !== preparation.current) { engine.dispose(); return }
+                  const checked = validateSchedule(start, end, Date.now())
+                  if ("error" in checked) throw new Error(checked.error)
+                  from = checked.from
+                  to = checked.to
+                } catch (error) {
+                  engine.dispose()
+                  if (attempt === preparation.current) {
+                    prepared.current = null
+                    setPreparing(false)
+                    setError(`${(error as Error).message} You can choose browser capture below if your browser supports it.`)
+                  }
+                  return
+                }
+                setPreparing(false)
+              } else {
+                if (!canCaptureStream()) {
+                  setError("This browser does not support browser capture. Choose HLS segment recording when available.")
+                  return
+                }
+                try { captureAudio.current = prepareCaptureAudio() }
+                catch { setError("Audio capture could not be initialized. Reload this page and try again."); return }
               }
               setMessage("")
-              setJob({
-                channel: target,
-                start: from,
-                end: to,
-                state: from > now ? "scheduled" : "connecting",
-                bytes: 0,
-              })
-              close()
+              setJob({ channel, start: from, end: to, state: from > Date.now() ? "scheduled" : "connecting", bytes: 0, mode })
+              // Do not dispose the prepared worker when transferring ownership to the job.
+              dialog.current?.close()
+              setTarget(null)
             }}
           >
             <div className="record-heading">
@@ -452,11 +590,18 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
               </p>
             ) : (
               <>
+                <fieldset className="record-mode" disabled={preparing}>
+                  <legend>Recording method</legend>
+                  <label><input type="radio" name="record-mode" checked={mode === "hls"} onChange={() => setMode("hls")} /> HLS segments · original quality</label>
+                  <label><input type="radio" name="record-mode" checked={mode === "capture"} onChange={() => setMode("capture")} /> Browser capture · fallback</label>
+                </fieldset>
+                <p className="record-notice">HLS recording downloads source segments and finalizes them locally. Start and end times follow segment boundaries. Encrypted streams are unsupported.</p>
                 <label htmlFor="record-start">
                   Start time <span>optional · defaults to now</span>
                 </label>
                 <input
                   id="record-start"
+                  disabled={preparing}
                   type="datetime-local"
                   value={start}
                   onChange={(e) => setStart(e.target.value)}
@@ -468,6 +613,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                 </label>
                 <input
                   id="record-end"
+                  disabled={preparing}
                   type="datetime-local"
                   value={end}
                   onChange={(e) => setEnd(e.target.value)}
@@ -478,13 +624,13 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
                   Times use your device’s timezone (
                   {Intl.DateTimeFormat().resolvedOptions().timeZone}). Keep this
                   tab visible and your device awake. Recordings stay in this
-                  session until you save them. Maximum 512 MB per recording.
+                  session until you save them. Maximum 128 MB of source data per recording; finalization needs additional memory.
                 </p>
                 <p id="record-error" role="alert" className="record-error">
                   {error}
                 </p>
-                <button className="primary-action" type="submit">
-                  {start ? "Schedule recording" : "Start recording"}{" "}
+                <button className="primary-action" type="submit" disabled={preparing}>
+                  {preparing ? "Preparing recording tools…" : start ? "Schedule recording" : "Start recording"}{" "}
                   <RecordActionIcon state={start ? "schedule" : "start"} />
                 </button>
               </>
@@ -499,7 +645,7 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
 export function RecordActionIcon({
   state,
 }: {
-  state: "start" | "schedule" | "scheduled" | "connecting" | "recording" | "saving" | "saved"
+  state: "start" | "schedule" | "scheduled" | "connecting" | "recording" | "saving" | "saved" | "failed"
 }) {
   if (state === "saving")
     return <span className="record-saving-icon" aria-hidden="true" />
@@ -552,7 +698,6 @@ export function RecordButton({ channel }: { channel: RecordChannel }) {
     return (
       <button
         className="record-button"
-        disabled={job.state === "saving"}
         onClick={stop}
       >
         <RecordActionIcon state={job.state} />
@@ -561,8 +706,8 @@ export function RecordButton({ channel }: { channel: RecordChannel }) {
           : job.state === "connecting"
             ? "Cancel recording"
             : job.state === "saving"
-              ? "Saving…"
-              : "End recording"}
+              ? "Cancel finalization"
+              : job.state === "failed" ? "Discard recording" : "End recording"}
       </button>
     )
   return (
@@ -583,7 +728,7 @@ export function RecordButton({ channel }: { channel: RecordChannel }) {
   )
 }
 export function RecordingLibrary() {
-  const { job, saved, stop } = useRecording()
+  const { job, saved, stop, retry, message } = useRecording()
   return (
     <section className="record-library">
       <p className="eyebrow">YOUR BROADCAST ARCHIVE</p>
@@ -613,7 +758,6 @@ export function RecordingLibrary() {
           </div>
           <button
             className="record-button"
-            disabled={job.state === "saving"}
             onClick={stop}
           >
             <RecordActionIcon state={job.state} />
@@ -622,11 +766,12 @@ export function RecordingLibrary() {
               : job.state === "connecting"
                 ? "Cancel recording"
                 : job.state === "saving"
-                  ? "Saving…"
-                  : "End recording"}
+                  ? "Cancel finalization"
+                  : job.state === "failed" ? "Discard recording" : "End recording"}
           </button>
         </article>
       )}
+      {job?.state === "failed" && <div className="record-notice" role="alert"><p>{message}</p><button className="record-button" onClick={retry}>Retry finalization</button></div>}
       {!job && !saved.length && (
         <div className="record-empty">
           <span aria-hidden="true">◉</span>
@@ -672,7 +817,7 @@ function SavedRecording({ item }: { item: Saved }) {
         <h2>{item.name}</h2>
         <p className="muted">
           {(item.size / 1048576).toFixed(1)} MB ·{" "}
-          {item.filename.endsWith("mp4") ? "MP4" : "WebM"} video
+          {item.filename.endsWith("mp4") ? "MP4" : item.filename.endsWith("mkv") ? "Matroska" : "WebM"} video
         </p>
         {confirming && (
           <p className="record-error" role="alert">

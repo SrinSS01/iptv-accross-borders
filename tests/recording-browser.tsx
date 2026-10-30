@@ -1,6 +1,5 @@
 // Development-only browser fixture; not imported by the production entrypoint.
 // Uses real canvas video, MediaRecorder, captureStream and decoded saved output.
-import { createRoot } from "react-dom/client"
 import { useEffect, useState } from "react"
 import {
   RecordingProvider,
@@ -120,8 +119,6 @@ function Fixture() {
     </main>
   )
 }
-createRoot(document.getElementById("root")!).render(
-  <RecordingProvider>
-    <Fixture />
-  </RecordingProvider>,
-)
+export default function RecordingFixture() {
+  return <RecordingProvider><Fixture /></RecordingProvider>
+}

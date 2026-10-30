@@ -1,6 +1,6 @@
 # Next.js migration with private Vercel hosting and FFmpeg WASM recording
 
-Status: approved plan, implementation deferred at the user's request. Current app remains React/Vite, deployed through GitHub Pages. Resume from this plan when requested; do not treat the current canvas/Web Audio recording fallback as an implementation of WASM segment recording.
+Status: implemented locally; final verification recorded in tests/VERIFICATION.md. Vercel account connection, protected preview deployment, and production promotion are pending user-provided tooling. No migration changes have been pushed or deployed yet.
 
 ## Summary
 
