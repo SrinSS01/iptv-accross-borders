@@ -167,3 +167,12 @@ select option { background: var(--surface); color: var(--text); }
 .data-source-unavailable { color:var(--accent); font-size:12px; }
 .data-source-skeleton { display:block; height:18px; width:64px; background:var(--border); }
 @media (max-width:767px) { .data-sources-grid { grid-template-columns:1fr; } .data-source-group + .data-source-group { border-left:0; border-top:1px solid var(--border); } .data-source-group { padding:16px; } }
+
+/* The live hero is a backdrop; text contrast must not depend on the broadcast. */
+.hero-stream video { opacity: 0; transition: opacity 600ms ease; }
+.hero-stream[data-playing="true"] video { opacity: 1; }
+.hero-stream-shade { background: linear-gradient(90deg, rgba(16,17,18,.97) 0%, rgba(16,17,18,.88) 38%, rgba(16,17,18,.38) 100%), linear-gradient(0deg, rgba(16,17,18,.7), transparent 65%); }
+.hero-grid:has(.hero-stream[data-playing="true"]) .broadcast-mark { opacity: 0; }
+@media (max-width: 640px) { .hero-stream-shade { background: rgba(16,17,18,.82); } }
+@media (prefers-reduced-motion: reduce) { .hero-stream video { transition: none; } }
+@media (max-width: 640px) { .hero-grid:has(button[aria-label$="background stream"]) { padding-top: 4.75rem; } }

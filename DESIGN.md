@@ -72,7 +72,7 @@ Category and Country use the shared ChannelFilters non-modal dialog picker with 
 Existing 24px stroke SVG icons, typically displayed at 20px. Pair recording symbols with action text.
 
 ### Motion
-Short state transitions only, with reduced-motion override. No decorative continuous animation beyond existing loading/live indicators.
+Short state transitions only, with reduced-motion override. The home hero may show the featured channel silently behind a dark readability gradient. Provide a pause control, respect reduced motion, preserve its last frame while releasing the stream off-screen, in a hidden tab, or while a foreground player is open; reconnect to live playback on return. Retain the signal graphic until a frame is available. Other motion is limited to loading/live indicators.
 
 ### Content and data visualization
 Plain action-led copy. Never imply that a listed channel is guaranteed reachable. Do not claim a scheduled job survives browser closure.

@@ -10,6 +10,9 @@ try{
 const page=await browser.newPage({viewport:{width:1440,height:1000}})
 const errors=[];page.on('pageerror',e=>errors.push(e.message))
 await page.goto(process.env.TEST_ORIGIN||'http://localhost:8443')
+// The app shell can render even when every catalog request fails.
+await page.locator('.broadcast-card').first().waitFor({state:'visible',timeout:45000})
+assert(await page.locator('.broadcast-card').count()>0,'Live catalog must render channel cards')
 await page.getByRole('button',{name:'Data sources',exact:true}).first().click()
 assert.equal(await page.locator('.data-source-row').count(),13)
 assert.match(await page.title(),/IPTV Accross Borders/)

@@ -1,4 +1,5 @@
 import Brand from "./Brand"
+import HeroStream from "./HeroStream"
 import { getStreamUrl } from "./stream-url"
 import DataSources from "./DataSources"
 import { useCatalog, type Channel } from "./catalog"
@@ -779,6 +780,7 @@ export default function App() {
                 id="home"
                 className="hero-grid relative mb-10 overflow-hidden  border border-white/8 bg-[var(--surface)] px-6 py-8 sm:px-9 sm:py-10"
               >
+                <HeroStream channel={featured} suspended={!!selected || !!playing} />
                 <div className="relative z-10 max-w-xl">
                   <span className="mb-5 inline-flex items-center gap-2  bg-black/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/65">
                     <span className="size-1.5 animate-pulse  bg-[#49d68b]" />
