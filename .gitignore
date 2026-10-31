@@ -26,3 +26,4 @@ logs/
 public/ffmpeg/
 dist/
 !.env.example
+.vercel

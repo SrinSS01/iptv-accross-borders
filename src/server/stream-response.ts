@@ -9,7 +9,11 @@ export function proxyFailure(error: unknown): Response {
   })
 }
 export async function proxyStream(request: Request, url: string, channel: string, playlist = false): Promise<Response> {
-  const range = validateRange(request.headers.get("range"))
+  // Native mobile players probe playlists with Range: bytes=0-1. A rewritten
+  // manifest has different byte offsets: ignore ranges and serve it whole.
+  // Keep byte-range support for segments/init maps used by fMP4 and recordings.
+  const knownPlaylist = playlist || /\.m3u8$/i.test(new URL(url).pathname)
+  const range = knownPlaylist ? undefined : validateRange(request.headers.get("range"))
   const upstream = await openUpstream(url, range, request.signal)
   let closed = false
   const close = () => { if (closed) return; closed = true; upstream.body.destroy(); upstream.cleanup() }
@@ -21,7 +25,11 @@ export async function proxyStream(request: Request, url: string, channel: string
       throw new ProxyError("UPSTREAM_UNAVAILABLE", "This stream resource is unavailable at the broadcaster.", 502)
     }
     const contentType = String(upstream.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase()
-    const isPlaylist = playlist || /mpegurl/.test(contentType) || /\.m3u8$/i.test(new URL(upstream.finalUrl).pathname)
+    const isPlaylist = knownPlaylist || /mpegurl/.test(contentType) || /\.m3u8$/i.test(new URL(upstream.finalUrl).pathname)
+    if (isPlaylist && range) {
+      close()
+      return proxyStream(request, url, channel, true)
+    }
     const limit = isPlaylist ? MAX_PLAYLIST_BYTES : MAX_RESOURCE_BYTES
     const contentLength = Number(upstream.headers["content-length"])
     if (Number.isFinite(contentLength) && contentLength > limit)
@@ -35,7 +43,6 @@ export async function proxyStream(request: Request, url: string, channel: string
       "content-security-policy": "default-src 'none'",
     })
     if (isPlaylist) {
-      if (range) throw new ProxyError("INVALID_RANGE", "Byte ranges are not supported for playlists.", 416)
       const bytes = await readBounded(upstream.body, limit)
       const text = rewritePlaylist(new TextDecoder().decode(bytes), upstream.finalUrl, channel)
       close()

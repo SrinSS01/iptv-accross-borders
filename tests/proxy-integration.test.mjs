@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import fs from "node:fs"
 import ts from "typescript"
+import { Readable } from "node:stream"
 
 // Replace only module dependencies in the test loader; the production transport
 // has no environment flag or route that permits fetching private addresses.
@@ -23,7 +24,7 @@ let responses = []
 let agentOptions
 let destroyed = 0
 function upstreamBody(chunks = []) {
-  return { destroyed: false, destroy() { this.destroyed = true }, async *[Symbol.asyncIterator]() { for (const item of chunks) yield item } }
+  return Readable.from(chunks)
 }
 dependencies.dns = { lookup: async (...args) => { calls.push(["dns", ...args]); return dnsResults } }
 dependencies.undici = {
@@ -35,7 +36,8 @@ const transport = await import(compile("../src/server/upstream.ts", {
 }))
 let responseValue
 let closed = 0
-dependencies.transport = { ...transport, openUpstream: async () => responseValue }
+const proxyRequests = []
+dependencies.transport = { ...transport, openUpstream: async (...args) => { proxyRequests.push(args); return responseValue } }
 const responseModule = await import(compile("../src/server/stream-response.ts", { "./proxy-policy": dependency("policy"), "./upstream": dependency("transport") }))
 const catalog = await import(compile("../src/server/stream-catalog.ts", { "./proxy-policy": dependency("policy"), "./upstream": dependency("transport") }))
 function fixture({ status = 200, headers = {}, chunks = [new Uint8Array([1, 2, 3])], url = "https://cdn.example/segment.ts" } = {}) {
@@ -120,6 +122,52 @@ test("server source indexes match catalog preference and exclude blocked/adult s
   const result = catalog.indexStreams([{ id: "ok", is_nsfw: false }, { id: "blocked", is_nsfw: false }, { id: "adult", is_nsfw: true }], streams, [{ channel: "blocked" }])
   assert.deepEqual([...result.keys()], ["ok"])
   assert.deepEqual(result.get("ok").map((row) => row.url), ["https://cdn.example/high.m3u8", "https://cdn.example/low.m3u8"])
+})
+
+test("mobile playlist range probes return complete rewritten manifests without forwarding Range", async () => {
+  for (const url of ["https://cdn.example/live.m3u8", "https://cdn.example/manifest"]) {
+    proxyRequests.length = 0
+    fixture({ url, chunks: [new TextEncoder().encode("#EXTM3U\n#EXTINF:2,\nseg.ts\n")] })
+    const response = await responseModule.proxyStream(new Request("https://app.example/stream", { headers: { range: "bytes=0-1" } }), url, "test", true)
+    assert.equal(response.status, 200)
+    assert.equal(proxyRequests[0][1], undefined)
+    assert.equal(response.headers.get("content-range"), null)
+    assert.match(await response.text(), /^#EXTM3U\n#EXTINF:2,\n\/api\/streams\/resource\?token=/)
+  }
+})
+test("MIME-discovered playlists are fetched again without a range before rewriting", async () => {
+  proxyRequests.length = 0
+  const upstream = fixture({ status: 206, headers: { "content-type": "application/vnd.apple.mpegurl" }, chunks: [new TextEncoder().encode("#EXTM3U\n#EXTINF:2,\nseg.ts\n")], url: "https://cdn.example/manifest" })
+  // The second open must receive a fresh body, as a real HTTP request would.
+  upstream.cleanup = () => { closed++; responseValue = { ...upstream, body: upstreamBody([new TextEncoder().encode("#EXTM3U\n#EXTINF:2,\nseg.ts\n")]), cleanup() {} } }
+  const response = await responseModule.proxyStream(new Request("https://app.example/stream", { headers: { range: "bytes=0-1" } }), upstream.finalUrl, "test")
+  assert.deepEqual(proxyRequests.map((args) => args[1]), ["bytes=0-1", undefined])
+  assert.equal(response.status, 200)
+  assert.match(await response.text(), /^#EXTM3U/)
+})
+test("unread redirect and rejected bodies can emit abort errors without uncaught exceptions", async () => {
+  dnsResults = [{ address: "93.184.216.34", family: 4 }]
+  for (const statusCode of [302, 416]) {
+    const body = new Readable({ read() {}, destroy(_error, callback) { callback(Object.assign(new Error("Request aborted"), { code: "UND_ERR_ABORTED" })) } })
+    responses = [{ statusCode, headers: { location: "http://127.0.0.1/private" }, body }]
+    if (statusCode === 302) {
+      await assert.rejects(transport.openUpstream("https://cdn.example/live.m3u8"), { code: "BLOCKED_DESTINATION" })
+    } else {
+      responseValue = await transport.openUpstream("https://cdn.example/seg.ts")
+      await assert.rejects(responseModule.proxyStream(new Request("https://app.example/resource"), "https://cdn.example/seg.ts", "test"), { code: "INVALID_RANGE" })
+    }
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(body.destroyed, true)
+    assert(body.listenerCount("error") > 0)
+  }
+})
+test("observing body errors does not hide an actual download failure", async () => {
+  dnsResults = [{ address: "93.184.216.34", family: 4 }]
+  const body = new Readable({ read() { this.destroy(new Error("connection lost")) } })
+  responses = [{ statusCode: 200, headers: {}, body }]
+  const upstream = await transport.openUpstream("https://cdn.example/seg.ts")
+  try { await assert.rejects(transport.readBounded(upstream.body, 1024), /connection lost/) }
+  finally { upstream.cleanup() }
 })
 
 test("catalog fetches bounded gzip data without changing media range transport", async () => {

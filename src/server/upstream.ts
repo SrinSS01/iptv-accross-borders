@@ -46,6 +46,10 @@ export async function openUpstream(input: string, range?: string, signal?: Abort
         bodyTimeout: 10_000,
         headers: { accept: "*/*", "accept-encoding": acceptEncoding, ...(range ? { range } : {}) },
       })
+      // Undici emits an asynchronous error when an unread body is destroyed
+      // (redirects, rejected statuses, or client cancellation). Always observe
+      // it, even before an async iterator is attached. Iterators still reject.
+      response.body.on("error", () => {})
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
         response.body.destroy()
         await agent.destroy()

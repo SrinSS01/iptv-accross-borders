@@ -109,6 +109,8 @@ function Player({
   const [status, setStatus] = useState("Connecting to live stream…")
   const [failed, setFailed] = useState(false)
   const [needsPlay, setNeedsPlay] = useState(false)
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  const playbackError = useRef<(error: unknown) => void>(() => {})
   const activeStream = channel.streams[streamIndex] ?? channel.stream
 
   useEffect(() => {
@@ -121,11 +123,16 @@ function Player({
 
     const source = getStreamUrl(channel.id, streamIndex, activeStream.url)
     let hls: Hls | null = null
+    let disposed = false
+    let sourceFailed = false
     setFailed(false)
     setNeedsPlay(false)
     setStatus("Connecting to live stream…")
 
     const fail = () => {
+      if (disposed || sourceFailed) return
+      sourceFailed = true
+      setNeedsPlay(false)
       if (streamIndex < channel.streams.length - 1) {
         setStatus("Trying another source…")
         setStreamIndex((index) => index + 1)
@@ -134,20 +141,31 @@ function Player({
         setStatus(
           activeStream.labels.includes("Geo-blocked")
             ? "This stream may not be available in your region."
-            : "The broadcaster is not responding right now.",
+            : "This stream could not be loaded or played on this device. Try the sources again.",
         )
       }
     }
     const markPlaying = () => {
+      if (disposed || sourceFailed) return
       setStatus("")
       setNeedsPlay(false)
       setFailed(false)
     }
-    const requestPlayback = () => {
-      video.play().catch(() => {
+    const handlePlaybackError = (error: unknown) => {
+      if (disposed || sourceFailed) return
+      const name = error instanceof DOMException ? error.name : ""
+      if (name === "AbortError") return // Source replaced or player closed.
+      if (name === "NotAllowedError") {
+        setFailed(false)
         setNeedsPlay(true)
-        setStatus("Ready when you are.")
-      })
+        setStatus("Tap to start the live stream.")
+      } else {
+        fail()
+      }
+    }
+    playbackError.current = handlePlaybackError
+    const requestPlayback = () => {
+      if (!disposed && !sourceFailed) void video.play().catch(handlePlaybackError)
     }
 
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -174,23 +192,21 @@ function Player({
     }
 
     return () => {
+      disposed = true
       video.removeEventListener("error", fail)
       video.removeEventListener("playing", markPlaying)
       hls?.destroy()
       video.removeAttribute("src")
       video.load()
     }
-  }, [activeStream, channel.id, channel.streams.length, streamIndex])
+  }, [activeStream, channel.id, channel.streams.length, streamIndex, retryAttempt])
 
   function startPlayback() {
     const video = videoRef.current
     if (!video) return
     setStatus("Starting live stream…")
     setNeedsPlay(false)
-    video.play().catch(() => {
-      setFailed(true)
-      setStatus("Playback was blocked. Use the play control below.")
-    })
+    video.play().catch(playbackError.current)
   }
 
   return (
@@ -246,9 +262,12 @@ function Player({
                     {icons.play} Start live stream
                   </button>
                 )}
-                {failed && channel.streams.length > 1 && (
+                {failed && (
                   <button
-                    onClick={() => setStreamIndex(0)}
+                    onClick={() => {
+                      setStreamIndex(0)
+                      setRetryAttempt((attempt) => attempt + 1)
+                    }}
                     className="mt-4  border border-white/20 px-5 py-2.5 text-xs font-semibold text-white"
                   >
                     Retry sources
